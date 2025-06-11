@@ -37,17 +37,17 @@ function install_node() {
 
   echo "Встановлення Drosera CLI..."
   curl -L https://app.drosera.io/install | bash
-  source ~/.bashrc || true
-  droseraup || true
+  ~/.drosera/bin/droseraup || true
 
   echo "Встановлення Foundry CLI..."
   curl -L https://foundry.paradigm.xyz | bash
-  source ~/.bashrc || true
-  foundryup || true
+  ~/.foundry/bin/foundryup || true
+
 
   echo "Встановлення Bun..."
   curl -fsSL https://bun.sh/install | bash
-  source ~/.bashrc || true
+  ~/.bun/bin/bun || true
+
 
   mkdir -p ~/my-drosera-trap
   cd ~/my-drosera-trap || exit
