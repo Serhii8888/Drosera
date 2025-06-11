@@ -25,7 +25,8 @@ function install_node() {
 
   read -rp "GitHub Email: " GITHUB_EMAIL
   read -rp "GitHub Username: " GITHUB_USERNAME
-  read -rp "Приватний ключ гаманця: " DROSERA_PRIVATE_KEY && echo
+  read -rp "Приватний ключ гаманця: " DROSERA_PRIVATE_KEY
+  echo
   read -rp "IP вашого VPS: " VPS_IP
   read -rp "Публічна адреса оператора (0x...): " OPERATOR_ADDRESS
 
