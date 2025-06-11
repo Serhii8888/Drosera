@@ -9,7 +9,6 @@ function install_node() {
   echo "Починаємо встановлення ноди..."
 
   sudo apt-get update && sudo apt-get upgrade -y
-
   sudo apt install curl ufw iptables build-essential git wget lz4 jq make gcc nano automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip libleveldb-dev -y
 
   echo "Встановлення Docker..."
@@ -24,10 +23,10 @@ function install_node() {
   sudo apt update -y && sudo apt upgrade -y
   sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-  echo "Перевірка установки Docker..."
+  echo "Перевірка Docker..."
   sudo docker run hello-world || true
 
-  # Запит даних
+  # Ввід даних
   read -rp "Введіть GitHub email: " GITHUB_EMAIL
   read -rp "Введіть GitHub username: " GITHUB_USERNAME
   read -rp "Введіть приватний ключ гаманця (приховано): " DROSERA_PRIVATE_KEY
@@ -50,29 +49,39 @@ function install_node() {
   export PATH="$HOME/.bun/bin:$PATH"
   ~/.bun/bin/bun || true
 
-  mkdir -p ~/my-drosera-trap
-  cd ~/my-drosera-trap || exit
+  echo "Бажаєте створити Trap чи він уже створений?"
+  echo "1) Створити Trap"
+  echo "2) Пропустити (Trap уже створений)"
+  read -rp "Ваш вибір (1-2): " trap_choice
 
-  git config --global user.email "$GITHUB_EMAIL"
-  git config --global user.name "$GITHUB_USERNAME"
+  if [[ "$trap_choice" == "1" ]]; then
+    mkdir -p ~/my-drosera-trap
+    cd ~/my-drosera-trap || exit
 
-  forge init -t drosera-network/trap-foundry-template
-  bun install || true
-  source ~/.bashrc || true
-  forge build || true
+    git config --global user.email "$GITHUB_EMAIL"
+    git config --global user.name "$GITHUB_USERNAME"
 
-  echo "⚙️ Створення Trap..."
-  DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera apply <<EOF
+    forge init -t drosera-network/trap-foundry-template
+    bun install || true
+    source ~/.bashrc || true
+    forge build || true
+
+    echo "⚙️ Створення Trap..."
+    DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera apply <<EOF
 ofc
 EOF
 
-  echo "✅ Trap створено! Зачекайте, поки він з'явиться на Etherscan, та поповніть його ETH для оплати газу."
-  echo "🔗 Explorer Link: https://holesky.etherscan.io/address/$(jq -r '.trap.address' trap_output.json 2>/dev/null || echo 'Перевірте адресу вручну')"
-  read -p "Натисніть Enter, коли Trap поповнено і можна продовжити..."
+    echo "✅ Trap створено! Зачекайте, поки він з'явиться на Etherscan, та поповніть його ETH для оплати газу."
+    echo "🔗 Explorer Link: https://holesky.etherscan.io/address/$(jq -r '.trap.address' trap_output.json 2>/dev/null || echo 'Перевірте адресу вручну')"
+    read -p "Натисніть Enter, коли Trap поповнено і можна продовжити..."
+  else
+    echo "➡️ Пропуск створення Trap."
+    cd ~/my-drosera-trap || mkdir ~/my-drosera-trap && cd ~/my-drosera-trap
+  fi
 
   # Налаштування drosera.toml
   if [ ! -f drosera.toml ]; then
-    echo "Файл drosera.toml не знайдено! Перевірте виконання попередніх кроків."
+    echo "Файл drosera.toml не знайдено! Перевірте, чи правильно ви створили або перенесли Trap."
     exit 1
   fi
 
