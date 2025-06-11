@@ -1,185 +1,178 @@
 #!/bin/bash
+
 set -e
 
-SERVICE="drosera.service"
-SERVICE_PATH="/etc/systemd/system/$SERVICE"
-
-function prompt_nonempty() {
-  local prompt_msg=$1
-  local input_var
-  while true; do
-    read -rp "$prompt_msg: " input_var
-    if [[ -n "$input_var" ]]; then
-      echo "$input_var"
-      break
-    else
-      echo "Значення не може бути порожнім, спробуйте ще раз."
-    fi
-  done
-}
-
-function remove_node() {
-  echo "=== Починаємо видалення існуючої ноди Drosera ==="
-
-  if systemctl is-active --quiet $SERVICE; then
-    echo "Зупинка сервісу $SERVICE..."
-    sudo systemctl stop $SERVICE
-  fi
-
-  if systemctl is-enabled --quiet $SERVICE; then
-    echo "Вимикаємо автозапуск $SERVICE..."
-    sudo systemctl disable $SERVICE
-  fi
-
-  if systemctl list-units --all | grep -q "$SERVICE"; then
-    echo "Видаляємо systemd-сервіс $SERVICE..."
-    sudo rm -f $SERVICE_PATH
-    sudo systemctl daemon-reload
-  fi
-
-  echo "Видаляємо drosera CLI та пов'язані файли..."
-  rm -rf ~/.drosera ~/.foundry ~/.bun ~/my-drosera-trap
-  rm -f ~/.bashrc_drosera_path ~/.bashrc_bun_path ~/.bashrc_foundry_path ~/.foundryup ~/.bun
-
-  echo "Видалення завершено."
-}
+NODE_SERVICE_NAME="drosera"
+NODE_USER="$USER"
 
 function install_node() {
-  echo "=== Починаємо установку Drosera ==="
+  echo "Починаємо встановлення ноди..."
 
-  # Запитуємо дані у користувача
-  local git_email=$(prompt_nonempty "Введіть email для git (наприклад, you@example.com)")
-  local git_user=$(prompt_nonempty "Введіть ім'я користувача для git (github-username)")
-  local drosera_address=$(prompt_nonempty "Введіть вашу Drosera адресу (наприклад, 0xYourDroseraAddress)")
-  local rpc_url=$(prompt_nonempty "Введіть RPC URL (наприклад, https://rpc.holesky.testnet)")
+  sudo apt-get update && sudo apt-get upgrade -y
 
-  # Оновлення системи (опційно)
-  sudo apt update && sudo apt upgrade -y
+  sudo apt install curl ufw iptables build-essential git wget lz4 jq make gcc nano automake autoconf tmux htop nvme-cli libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip libleveldb-dev -y
 
-  # Встановлення залежностей
-  sudo apt install -y curl git build-essential pkg-config libssl-dev jq ufw
+  echo "Встановлення Docker..."
+  for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do sudo apt-get remove -y $pkg; done
+  sudo apt-get update
+  sudo apt-get install -y ca-certificates curl gnupg
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo apt update -y && sudo apt upgrade -y
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-  # Встановлення Docker (офіційний скрипт з видаленням конфліктів)
-  if ! command -v docker &>/dev/null; then
-    echo "Встановлення Docker..."
-    sudo apt-get remove -y docker docker-engine docker.io containerd runc containerd.io || true
-    curl -fsSL https://get.docker.com | sudo bash
-    sudo systemctl enable docker
-    sudo systemctl start docker
-  else
-    echo "Docker вже встановлений."
-  fi
+  echo "Перевірка установки Docker..."
+  sudo docker run hello-world || true
 
-  # Встановлення Drosera CLI
+  # Запит даних
+  read -rp "Введіть GitHub email: " GITHUB_EMAIL
+  read -rp "Введіть GitHub username: " GITHUB_USERNAME
+  read -rsp "Введіть приватний ключ гаманця (приховано): " DROSERA_PRIVATE_KEY
+  echo
+  read -rp "Введіть IP вашого VPS: " VPS_IP
+  read -rp "Введіть публічну адресу оператора (Ethereum address): " OPERATOR_ADDRESS
+
   echo "Встановлення Drosera CLI..."
   curl -L https://app.drosera.io/install | bash
-
-  # Завантаження PATH для drosera CLI
   source ~/.bashrc || true
+  droseraup || true
 
-  # Оновлення drosera CLI, якщо можливо
-  if command -v droseraup &>/dev/null; then
-    droseraup || echo "droseraup не спрацював, але продовжуємо"
-  fi
-
-  # Встановлення Foundry
-  echo "Встановлення Foundry (forge)..."
+  echo "Встановлення Foundry CLI..."
   curl -L https://foundry.paradigm.xyz | bash
   source ~/.bashrc || true
   foundryup || true
-  source ~/.bashrc || true
 
-  # Встановлення Bun
   echo "Встановлення Bun..."
   curl -fsSL https://bun.sh/install | bash
   source ~/.bashrc || true
-  export PATH="$HOME/.bun/bin:$PATH"
 
-  # Перевірка встановлення CLI
-  for cmd in drosera forge bun; do
-    if ! command -v $cmd &>/dev/null; then
-      echo "Помилка: $cmd не знайдено у PATH. Переконайтеся, що .bashrc завантажено."
-      exit 1
-    fi
-  done
-
-  echo "Ініціалізація drosera trap..."
   mkdir -p ~/my-drosera-trap
-  cd ~/my-drosera-trap
+  cd ~/my-drosera-trap || exit
 
-  # Налаштування git з введеними даними
-  git config --global user.email "$git_email"
-  git config --global user.name "$git_user"
+  git config --global user.email "$GITHUB_EMAIL"
+  git config --global user.name "$GITHUB_USERNAME"
 
-  forge init -t drosera-network/trap-foundry-template || true
+  forge init -t drosera-network/trap-foundry-template
 
   bun install || true
+  source ~/.bashrc || true
   forge build || true
 
-  echo "Реєстрація оператора..."
-  drosera-operator register --drosera-address "$drosera_address" --rpc-url "$rpc_url" || \
-    echo "Реєстрація не пройшла, перевірте адреси та RPC."
+  DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera apply <<EOF
+ofc
+EOF
 
-  # Налаштування firewall (опційно)
-  echo "Налаштування Firewall..."
-  sudo ufw allow 22/tcp
-  sudo ufw allow 26656/tcp
-  sudo ufw --force enable
+  # Налаштування drosera.toml
+  if [ ! -f drosera.toml ]; then
+    echo "Файл drosera.toml не знайдено! Перевірте виконання попередніх кроків."
+    exit 1
+  fi
 
-  # Створення systemd сервісу
-  echo "Створення systemd сервісу drosera.service..."
-  sudo tee $SERVICE_PATH > /dev/null <<EOF
+  sed -i 's/private = true/private_trap = true/' drosera.toml
+
+  if ! grep -q "whitelist" drosera.toml; then
+    echo "whitelist = [\"$OPERATOR_ADDRESS\"]" >> drosera.toml
+  fi
+
+  DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera apply <<EOF
+ofc
+EOF
+
+  cd ~ || exit
+
+  echo "Завантаження drosera-operator CLI..."
+  curl -LO https://github.com/drosera-network/releases/releases/download/v1.16.2/drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
+  tar -xvf drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
+
+  sudo cp drosera-operator /usr/bin/
+  rm drosera-operator drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
+
+  docker pull ghcr.io/drosera-network/drosera-operator:latest || true
+
+  ./drosera-operator register --eth-rpc-url https://ethereum-holesky-rpc.publicnode.com --eth-private-key "$DROSERA_PRIVATE_KEY"
+
+  sudo tee /etc/systemd/system/${NODE_SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
 Description=Drosera Node Service
-After=network.target docker.service
-Requires=docker.service
+After=network-online.target
 
 [Service]
-User=$USER
-ExecStart=$(command -v drosera) run
+User=${NODE_USER}
 Restart=always
-RestartSec=10
-LimitNOFILE=65536
+RestartSec=15
+LimitNOFILE=65535
+ExecStart=$(which drosera-operator) node --db-file-path $HOME/.drosera.db --network-p2p-port 31313 --server-port 31314 \
+    --eth-rpc-url https://ethereum-holesky-rpc.publicnode.com \
+    --eth-backup-rpc-url https://1rpc.io/holesky \
+    --drosera-address 0xea08f7d533C2b9A62F40D5326214f39a8E3A32F8 \
+    --eth-private-key $DROSERA_PRIVATE_KEY \
+    --listen-address 0.0.0.0 \
+    --network-external-p2p-address $VPS_IP \
+    --disable-dnr-confirmation true
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
+  sudo ufw allow ssh
+  sudo ufw allow 22
+  sudo ufw allow 31313/tcp
+  sudo ufw allow 31314/tcp
+  sudo ufw --force enable
+
   sudo systemctl daemon-reload
-  sudo systemctl enable $SERVICE
-  sudo systemctl start $SERVICE
+  sudo systemctl enable ${NODE_SERVICE_NAME}
+  sudo systemctl start ${NODE_SERVICE_NAME}
 
-  echo "Установка завершена! Перевіряйте логи командою:"
-  echo "journalctl -u $SERVICE -f"
-  echo "Для активації оператора перейдіть на https://app.drosera.io/"
+  echo "Встановлення завершено!"
+  echo "Логи ноди дивіться через:"
+  echo "journalctl -u ${NODE_SERVICE_NAME} -f"
 }
 
-function view_logs() {
-  sudo journalctl -u $SERVICE -f
+function remove_node() {
+  echo "Зупинка і видалення ноди..."
+  sudo systemctl stop ${NODE_SERVICE_NAME} || true
+  sudo systemctl disable ${NODE_SERVICE_NAME} || true
+  sudo rm /etc/systemd/system/${NODE_SERVICE_NAME}.service || true
+  sudo systemctl daemon-reload
+
+  echo "Видалення drosera-operator..."
+  sudo rm /usr/bin/drosera-operator || true
+
+  echo "Видалення робочих файлів..."
+  rm -rf ~/my-drosera-trap
+  rm -f drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
+
+  echo "Видалення завершено."
 }
 
-function restart_service() {
-  echo "Перезапуск $SERVICE..."
-  sudo systemctl restart $SERVICE
-  echo "Перезапуск завершено."
+function restart_node() {
+  echo "Перезапуск ноди..."
+  sudo systemctl restart ${NODE_SERVICE_NAME}
+  echo "Нода перезапущена."
 }
 
-while true; do
-  echo
-  echo "==== Меню Drosera ===="
-  echo "1) Встановити ноду"
-  echo "2) Видалити ноду"
-  echo "3) Переглянути логи"
-  echo "4) Перезапустити сервіс"
-  echo "5) Вийти"
-  read -rp "Обери опцію (1-5): " opt
+function main_menu() {
+  while true; do
+    echo "-------------------------------"
+    echo "Виберіть дію:"
+    echo "1) Встановити ноду"
+    echo "2) Видалити ноду"
+    echo "3) Перезапустити ноду"
+    echo "4) Вийти"
+    echo -n "Ваш вибір (1-4): "
+    read choice
+    case $choice in
+      1) install_node ;;
+      2) remove_node ;;
+      3) restart_node ;;
+      4) echo "Вихід."; exit 0 ;;
+      *) echo "Невірний вибір, спробуйте ще раз." ;;
+    esac
+  done
+}
 
-  case $opt in
-    1) install_node ;;
-    2) remove_node ;;
-    3) view_logs ;;
-    4) restart_service ;;
-    5) echo "Вихід."; exit 0 ;;
-    *) echo "Невірний вибір, спробуйте ще раз." ;;
-  esac
-done
+main_menu
