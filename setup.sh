@@ -37,16 +37,24 @@ function install_node() {
 
   echo "Встановлення Drosera CLI..."
   curl -L https://app.drosera.io/install | bash
+  export PATH="$HOME/.drosera/bin:$PATH"
   ~/.drosera/bin/droseraup || true
 
   echo "Встановлення Foundry CLI..."
   curl -L https://foundry.paradigm.xyz | bash
+  export PATH="$HOME/.foundry/bin:$PATH"
   ~/.foundry/bin/foundryup || true
-
 
   echo "Встановлення Bun..."
   curl -fsSL https://bun.sh/install | bash
+  export PATH="$HOME/.bun/bin:$PATH"
   ~/.bun/bin/bun || true
+
+  # Потім можна використовувати forge і bun команду
+  forge init -t drosera-network/trap-foundry-template
+  bun install || true
+  forge build || true
+
 
 
   mkdir -p ~/my-drosera-trap
