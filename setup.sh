@@ -1,102 +1,146 @@
 #!/bin/bash
+set -e
 
-NODE_DIR="$HOME/drosera-node"
-SERVICE_FILE="/etc/systemd/system/drosera.service"
+SERVICE="drosera.service"
+SERVICE_PATH="/etc/systemd/system/$SERVICE"
 
 function remove_node() {
-  echo "=== Видалення Drosera ==="
-  echo "Зупинка сервісу..."
-  sudo systemctl stop drosera.service 2>/dev/null || true
-  echo "Вимикання автозапуску..."
-  sudo systemctl disable drosera.service 2>/dev/null || true
-  echo "Видалення сервісу..."
-  sudo rm -f $SERVICE_FILE
-  echo "Видалення CLI, конфігів і файлів..."
-  rm -rf "$NODE_DIR"
+  echo "=== Починаємо видалення існуючої ноди Drosera ==="
+
+  if systemctl is-active --quiet $SERVICE; then
+    echo "Зупинка сервісу $SERVICE..."
+    sudo systemctl stop $SERVICE
+  fi
+
+  if systemctl is-enabled --quiet $SERVICE; then
+    echo "Вимикаємо автозапуск $SERVICE..."
+    sudo systemctl disable $SERVICE
+  fi
+
+  if systemctl list-units --all | grep -q "$SERVICE"; then
+    echo "Видаляємо systemd-сервіс $SERVICE..."
+    sudo rm -f $SERVICE_PATH
+    sudo systemctl daemon-reload
+  fi
+
+  echo "Видаляємо drosera CLI та пов'язані файли..."
+  rm -rf ~/.drosera ~/.foundry ~/.bun ~/my-drosera-trap
+  rm -f ~/.bashrc_drosera_path ~/.bashrc_bun_path ~/.bashrc_foundry_path ~/.foundryup ~/.bun
+
   echo "Видалення завершено."
 }
 
-function install_docker() {
-  echo "=== Встановлення Docker ==="
-  sudo apt-get remove -y docker docker-engine docker.io containerd runc containerd.io || true
-  sudo apt-get update
-  sudo apt-get install -y ca-certificates curl gnupg lsb-release
-
-  sudo mkdir -p /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-  echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-  sudo apt-get update
-  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-  sudo systemctl enable docker
-  sudo systemctl start docker
-}
-
 function install_node() {
-  echo "=== Встановлення Drosera ==="
+  echo "=== Починаємо установку Drosera ==="
 
-  # Оновлення системи та встановлення потрібних пакетів
-  sudo apt-get update
-  sudo apt-get install -y curl git build-essential pkg-config libssl-dev jq ufw
+  # Оновлення системи (опційно)
+  sudo apt update && sudo apt upgrade -y
 
-  # Встановлюємо Docker (офіційний спосіб, щоб уникнути конфліктів)
-  install_docker
+  # Встановлення залежностей
+  sudo apt install -y curl git build-essential pkg-config libssl-dev jq ufw
 
-  # Встановлення bun (якщо треба)
-  if ! command -v bun &> /dev/null; then
-    echo "Встановлення bun..."
-    curl -fsSL https://bun.sh/install | bash
-    source "$HOME/.bashrc"
+  # Встановлення Docker (офіційний скрипт з видаленням конфліктів)
+  if ! command -v docker &>/dev/null; then
+    echo "Встановлення Docker..."
+    sudo apt-get remove -y docker docker-engine docker.io containerd runc containerd.io || true
+    curl -fsSL https://get.docker.com | sudo bash
+    sudo systemctl enable docker
+    sudo systemctl start docker
+  else
+    echo "Docker вже встановлений."
   fi
 
-  # Створення каталогу ноди
-  mkdir -p "$NODE_DIR"
-  cd "$NODE_DIR" || exit
+  # Встановлення Drosera CLI
+  echo "Встановлення Drosera CLI..."
+  curl -L https://app.drosera.io/install | bash
 
-  # Завантаження drosera CLI (приклад, заміни на актуальний URL)
-  echo "Завантаження drosera CLI..."
-  curl -L -o drosera https://github.com/drosera-operator/releases/latest/download/drosera-linux-amd64
-  chmod +x drosera
+  # Завантаження PATH для drosera CLI
+  source ~/.bashrc || true
 
-  # Ініціалізація та конфігурація ноди
-  ./drosera init || true
+  # Оновлення drosera CLI, якщо можливо
+  if command -v droseraup &>/dev/null; then
+    droseraup || echo "droseraup не спрацював, але продовжуємо"
+  fi
 
-  # Тут можна додати налаштування drosera.toml, якщо треба
+  # Встановлення Foundry
+  echo "Встановлення Foundry (forge)..."
+  curl -L https://foundry.paradigm.xyz | bash
+  source ~/.bashrc || true
+  foundryup || true
+  source ~/.bashrc || true
 
-  # Створення systemd-сервісу
-  echo "[Unit]
+  # Встановлення Bun
+  echo "Встановлення Bun..."
+  curl -fsSL https://bun.sh/install | bash
+  source ~/.bashrc || true
+  export PATH="$HOME/.bun/bin:$PATH"
+
+  # Перевірка встановлення CLI
+  for cmd in drosera forge bun; do
+    if ! command -v $cmd &>/dev/null; then
+      echo "Помилка: $cmd не знайдено у PATH. Переконайтеся, що .bashrc завантажено."
+      exit 1
+    fi
+  done
+
+  echo "Ініціалізація drosera trap..."
+  mkdir -p ~/my-drosera-trap
+  cd ~/my-drosera-trap
+
+  # Налаштування git (заміни на свої дані, якщо треба)
+  git config --global user.email "you@example.com"
+  git config --global user.name "your-github-username"
+
+  forge init -t drosera-network/trap-foundry-template || true
+
+  bun install || true
+  forge build || true
+
+  echo "Реєстрація оператора (заміни значення --drosera-address, --rpc-url на свої)..."
+  drosera-operator register --drosera-address "0xYourDroseraAddress" --rpc-url "https://rpc.holesky.testnet" || \
+    echo "Реєстрація не пройшла, перевірте адреси та RPC."
+
+  # Налаштування firewall (опційно)
+  echo "Налаштування Firewall..."
+  sudo ufw allow 22/tcp
+  sudo ufw allow 26656/tcp
+  sudo ufw --force enable
+
+  # Створення systemd сервісу
+  echo "Створення systemd сервісу drosera.service..."
+  sudo tee $SERVICE_PATH > /dev/null <<EOF
+[Unit]
 Description=Drosera Node Service
 After=network.target docker.service
 Requires=docker.service
 
 [Service]
 User=$USER
-WorkingDirectory=$NODE_DIR
-ExecStart=$NODE_DIR/drosera start
-Restart=on-failure
-RestartSec=5s
+ExecStart=$(command -v drosera) run
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
 
 [Install]
 WantedBy=multi-user.target
-" | sudo tee $SERVICE_FILE
+EOF
 
   sudo systemctl daemon-reload
-  sudo systemctl enable drosera.service
-  sudo systemctl start drosera.service
+  sudo systemctl enable $SERVICE
+  sudo systemctl start $SERVICE
 
-  echo "Встановлення завершено! Перейдіть у https://app.drosera.io/ для активації."
+  echo "Установка завершена! Перевіряйте логи командою:"
+  echo "journalctl -u $SERVICE -f"
+  echo "Для активації оператора перейдіть на https://app.drosera.io/"
 }
 
 function view_logs() {
-  sudo journalctl -u drosera.service -f
+  sudo journalctl -u $SERVICE -f
 }
 
 function restart_service() {
-  echo "Перезапуск drosera.service..."
-  sudo systemctl restart drosera.service
+  echo "Перезапуск $SERVICE..."
+  sudo systemctl restart $SERVICE
   echo "Перезапуск завершено."
 }
 
