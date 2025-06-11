@@ -142,40 +142,4 @@ EOF
   echo "📜 Перегляд логів: journalctl -u ${NODE_SERVICE_NAME} -f"
 }
 
-function remove_node() {
-  echo "🛑 Зупинка та видалення ноди..."
-  sudo systemctl stop ${NODE_SERVICE_NAME}
-  sudo systemctl disable ${NODE_SERVICE_NAME}
-  sudo rm -f /etc/systemd/system/${NODE_SERVICE_NAME}.service
-  sudo systemctl daemon-reload
-
-  sudo rm -f /usr/bin/drosera-operator
-  rm -rf ~/my-drosera-trap
-  echo "✅ Видалено."
-}
-
-function restart_node() {
-  echo "🔁 Перезапуск ноди..."
-  sudo systemctl restart ${NODE_SERVICE_NAME}
-  echo "✅ Перезапущено."
-}
-
-function main_menu() {
-  while true; do
-    echo "==============================="
-    echo "1) Встановити ноду"
-    echo "2) Видалити ноду"
-    echo "3) Перезапустити ноду"
-    echo "4) Вийти"
-    read -rp "Ваш вибір (1-4): " choice
-    case $choice in
-      1) install_node ;;
-      2) remove_node ;;
-      3) restart_node ;;
-      4) echo "👋 До побачення!"; exit 0 ;;
-      *) echo "❗ Невірний вибір!" ;;
-    esac
-  done
-}
-
-main_menu
+install_node
