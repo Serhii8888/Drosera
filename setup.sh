@@ -45,9 +45,8 @@ services:
     volumes:
       - ./drosera.toml:/app/drosera.toml
       - ./data:/app/data
-    command: >
-      node
-      --config /app/drosera.toml
+    command: node
+
 EOF
 
 docker compose up -d
