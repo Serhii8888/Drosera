@@ -4,6 +4,7 @@ set -e
 
 NODE_SERVICE_NAME="drosera"
 NODE_USER="$USER"
+RPC_URL="https://holesky.drpc.org"
 
 function install_node() {
   echo "Починаємо встановлення ноди..."
@@ -66,8 +67,28 @@ function install_node() {
 ofc
 EOF
 
-  echo "✅ Trap створено! Зачекайте, поки він з'явиться на Etherscan, та поповніть його ETH для оплати газу."
-  echo "🔗 Explorer Link: https://holesky.etherscan.io/address/$(jq -r '.trap.address' trap_output.json 2>/dev/null || echo 'Перевірте адресу вручну')"
+  # Отримати адресу трапу з файлу (якщо такого немає, попросити ввести вручну)
+  TRAP_ADDRESS=$(jq -r '.trap.address' trap_output.json 2>/dev/null || echo "")
+
+  if [ -z "$TRAP_ADDRESS" ] || [ "$TRAP_ADDRESS" = "null" ]; then
+    echo "Не вдалося отримати адресу трапу з trap_output.json, введіть її вручну:"
+    read -rp "Адреса трапу: " TRAP_ADDRESS
+  fi
+
+  echo "⏳ Очікуємо появи контракту за адресою $TRAP_ADDRESS ..."
+
+  until curl -s -X POST \
+    -H "Content-Type: application/json" \
+    --data '{"jsonrpc":"2.0","method":"eth_getCode","params":["'"$TRAP_ADDRESS"',"latest"],"id":1}' \
+    "$RPC_URL" | grep -qv '"result":"0x"'; do
+      echo "⏳ Контракт ще не розгорнуто... чекаємо 5 секунд"
+      sleep 5
+  done
+
+  echo "✅ Контракт трапу розгорнуто!"
+
+  echo "Зачекайте, поки він з'явиться на Etherscan, та поповніть його ETH для оплати газу."
+  echo "🔗 Explorer Link: https://holesky.etherscan.io/address/$TRAP_ADDRESS"
   read -p "Натисніть Enter, коли Trap поповнено і можна продовжити..."
 
   # Налаштування drosera.toml
@@ -114,7 +135,7 @@ LimitNOFILE=65535
 ExecStart=$(which drosera-operator) node --db-file-path $HOME/.drosera.db --network-p2p-port 31313 --server-port 31314 \
     --eth-rpc-url https://ethereum-holesky-rpc.publicnode.com \
     --eth-backup-rpc-url https://1rpc.io/holesky \
-    --drosera-address 0xea08f7d533C2b9A62F40D5326214f39a8E3A32F8 \
+    --drosera-address $TRAP_ADDRESS \
     --eth-private-key $DROSERA_PRIVATE_KEY \
     --listen-address 0.0.0.0 \
     --network-external-p2p-address $VPS_IP \
