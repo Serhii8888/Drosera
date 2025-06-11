@@ -30,7 +30,7 @@ function install_node() {
   # Запит даних
   read -rp "Введіть GitHub email: " GITHUB_EMAIL
   read -rp "Введіть GitHub username: " GITHUB_USERNAME
-  read -rsp "Введіть приватний ключ гаманця (приховано): " DROSERA_PRIVATE_KEY
+  read -rp "Введіть приватний ключ гаманця (приховано): " DROSERA_PRIVATE_KEY
   echo
   read -rp "Введіть IP вашого VPS: " VPS_IP
   read -rp "Введіть публічну адресу оператора (Ethereum address): " OPERATOR_ADDRESS
