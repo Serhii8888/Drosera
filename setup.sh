@@ -1,136 +1,121 @@
 #!/bin/bash
-set -e
 
-NODE_USER="$USER"
-SERVICE_NAME="drosera.service"
+NODE_DIR="$HOME/drosera-node"
+SERVICE_FILE="/etc/systemd/system/drosera.service"
 
-function check_command() {
-  command -v "$1" >/dev/null 2>&1 || {
-    echo "Команда $1 не встановлена або не в PATH. Встанови її перш ніж продовжувати."
-    exit 1
-  }
+function remove_node() {
+  echo "=== Видалення Drosera ==="
+  echo "Зупинка сервісу..."
+  sudo systemctl stop drosera.service 2>/dev/null || true
+  echo "Вимикання автозапуску..."
+  sudo systemctl disable drosera.service 2>/dev/null || true
+  echo "Видалення сервісу..."
+  sudo rm -f $SERVICE_FILE
+  echo "Видалення CLI, конфігів і файлів..."
+  rm -rf "$NODE_DIR"
+  echo "Видалення завершено."
 }
 
-function uninstall_node() {
-  echo "=== Видалення Drosera ==="
-  if systemctl is-active --quiet $SERVICE_NAME; then
-    echo "Зупинка сервісу..."
-    sudo systemctl stop $SERVICE_NAME
-  fi
-  if systemctl is-enabled --quiet $SERVICE_NAME; then
-    echo "Вимикання автозапуску..."
-    sudo systemctl disable $SERVICE_NAME
-  fi
-  if systemctl list-units --all | grep -q $SERVICE_NAME; then
-    echo "Видалення systemd-сервісу..."
-    sudo rm -f /etc/systemd/system/$SERVICE_NAME
-    sudo systemctl daemon-reload
-  fi
+function install_docker() {
+  echo "=== Встановлення Docker ==="
+  sudo apt-get remove -y docker docker-engine docker.io containerd runc containerd.io || true
+  sudo apt-get update
+  sudo apt-get install -y ca-certificates curl gnupg lsb-release
 
-  echo "Видалення CLI, конфігів і файлів..."
-  rm -rf ~/.drosera ~/.foundry ~/.bun ~/my-drosera-trap
-  echo "Видалення завершено."
+  sudo mkdir -p /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+  echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+  sudo apt-get update
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  sudo systemctl enable docker
+  sudo systemctl start docker
 }
 
 function install_node() {
   echo "=== Встановлення Drosera ==="
 
-  # Встановлення залежностей
-  sudo apt update && sudo apt install -y curl git build-essential pkg-config libssl-dev jq ufw docker.io
+  # Оновлення системи та встановлення потрібних пакетів
+  sudo apt-get update
+  sudo apt-get install -y curl git build-essential pkg-config libssl-dev jq ufw
 
-  # Переконуємось, що Docker запущено
-  sudo systemctl enable --now docker
+  # Встановлюємо Docker (офіційний спосіб, щоб уникнути конфліктів)
+  install_docker
 
-  # Встановлення Drosera CLI
-  curl -L https://app.drosera.io/install | bash
-  source ~/.bashrc || true
+  # Встановлення bun (якщо треба)
+  if ! command -v bun &> /dev/null; then
+    echo "Встановлення bun..."
+    curl -fsSL https://bun.sh/install | bash
+    source "$HOME/.bashrc"
+  fi
 
-  # Встановлення Foundry
-  curl -L https://foundry.paradigm.xyz | bash
-  source ~/.bashrc || true
-  foundryup || true
-  source ~/.bashrc || true
+  # Створення каталогу ноди
+  mkdir -p "$NODE_DIR"
+  cd "$NODE_DIR" || exit
 
-  # Встановлення Bun
-  curl -fsSL https://bun.sh/install | bash
-  source ~/.bashrc || true
-  export PATH="$HOME/.bun/bin:$PATH"
+  # Завантаження drosera CLI (приклад, заміни на актуальний URL)
+  echo "Завантаження drosera CLI..."
+  curl -L -o drosera https://github.com/drosera-operator/releases/latest/download/drosera-linux-amd64
+  chmod +x drosera
 
-  # Перевірка наявності команд
-  for cmd in drosera forge bun; do
-    check_command "$cmd"
-  done
+  # Ініціалізація та конфігурація ноди
+  ./drosera init || true
 
-  # Ініціалізація drosera trap
-  mkdir -p ~/my-drosera-trap
-  cd ~/my-drosera-trap
+  # Тут можна додати налаштування drosera.toml, якщо треба
 
-  # Ініціалізація проекту forge
-  forge init -t drosera-network/trap-foundry-template
-
-  bun install
-  forge build
-
-  # Тут можна вставити інструкцію для реєстрації оператора або залишити користувачу робити вручну
-  echo "Не забудь зареєструвати оператора вручну, замінивши адреси."
-
-  # Налаштування firewall
-  sudo ufw allow 22/tcp
-  sudo ufw allow 26656/tcp
-  sudo ufw --force enable
-
-  # Створення systemd сервісу
-  sudo tee /etc/systemd/system/$SERVICE_NAME > /dev/null <<EOF
-[Unit]
+  # Створення systemd-сервісу
+  echo "[Unit]
 Description=Drosera Node Service
 After=network.target docker.service
 Requires=docker.service
 
 [Service]
-User=$NODE_USER
-ExecStart=/usr/bin/drosera run
-Restart=always
-RestartSec=10
-LimitNOFILE=65536
+User=$USER
+WorkingDirectory=$NODE_DIR
+ExecStart=$NODE_DIR/drosera start
+Restart=on-failure
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
-EOF
+" | sudo tee $SERVICE_FILE
 
   sudo systemctl daemon-reload
-  sudo systemctl enable $SERVICE_NAME
-  sudo systemctl start $SERVICE_NAME
+  sudo systemctl enable drosera.service
+  sudo systemctl start drosera.service
 
-  echo "Встановлення завершено!"
+  echo "Встановлення завершено! Перейдіть у https://app.drosera.io/ для активації."
 }
 
-function show_logs() {
-  echo "=== Логи сервісу Drosera ==="
-  sudo journalctl -u $SERVICE_NAME -f
+function view_logs() {
+  sudo journalctl -u drosera.service -f
 }
 
 function restart_service() {
-  echo "=== Перезапуск сервісу Drosera ==="
-  sudo systemctl restart $SERVICE_NAME
-  echo "Сервіс перезапущено."
+  echo "Перезапуск drosera.service..."
+  sudo systemctl restart drosera.service
+  echo "Перезапуск завершено."
 }
 
 while true; do
-  echo ""
+  echo
   echo "==== Меню Drosera ===="
   echo "1) Встановити ноду"
   echo "2) Видалити ноду"
   echo "3) Переглянути логи"
   echo "4) Перезапустити сервіс"
   echo "5) Вийти"
-  echo -n "Обери опцію (1-5): "
-  read -r choice
-  case $choice in
+  read -rp "Обери опцію (1-5): " opt
+
+  case $opt in
     1) install_node ;;
-    2) uninstall_node ;;
-    3) show_logs ;;
+    2) remove_node ;;
+    3) view_logs ;;
     4) restart_service ;;
-    5) echo "Вихід..."; exit 0 ;;
-    *) echo "Невірний вибір, спробуй ще." ;;
+    5) echo "Вихід."; exit 0 ;;
+    *) echo "Невірний вибір, спробуйте ще раз." ;;
   esac
 done
