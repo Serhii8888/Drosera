@@ -50,13 +50,6 @@ function install_node() {
   export PATH="$HOME/.bun/bin:$PATH"
   ~/.bun/bin/bun || true
 
-  # Потім можна використовувати forge і bun команду
-  forge init -t drosera-network/trap-foundry-template
-  bun install || true
-  forge build || true
-
-
-
   mkdir -p ~/my-drosera-trap
   cd ~/my-drosera-trap || exit
 
@@ -64,14 +57,18 @@ function install_node() {
   git config --global user.name "$GITHUB_USERNAME"
 
   forge init -t drosera-network/trap-foundry-template
-
   bun install || true
   source ~/.bashrc || true
   forge build || true
 
+  echo "⚙️ Створення Trap..."
   DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera apply <<EOF
 ofc
 EOF
+
+  echo "✅ Trap створено! Зачекайте, поки він з'явиться на Etherscan, та поповніть його ETH для оплати газу."
+  echo "🔗 Explorer Link: https://holesky.etherscan.io/address/$(jq -r '.trap.address' trap_output.json 2>/dev/null || echo 'Перевірте адресу вручну')"
+  read -p "Натисніть Enter, коли Trap поповнено і можна продовжити..."
 
   # Налаштування drosera.toml
   if [ ! -f drosera.toml ]; then
@@ -85,23 +82,25 @@ EOF
     echo "whitelist = [\"$OPERATOR_ADDRESS\"]" >> drosera.toml
   fi
 
+  echo "📦 Повторне застосування конфігурації з whitelist..."
   DROSERA_PRIVATE_KEY="$DROSERA_PRIVATE_KEY" drosera apply <<EOF
 ofc
 EOF
 
   cd ~ || exit
 
-  echo "Завантаження drosera-operator CLI..."
+  echo "📥 Завантаження drosera-operator CLI..."
   curl -LO https://github.com/drosera-network/releases/releases/download/v1.16.2/drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
   tar -xvf drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
-
   sudo cp drosera-operator /usr/bin/
   rm drosera-operator drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
 
   docker pull ghcr.io/drosera-network/drosera-operator:latest || true
 
+  echo "📡 Реєстрація оператора..."
   ./drosera-operator register --eth-rpc-url https://ethereum-holesky-rpc.publicnode.com --eth-private-key "$DROSERA_PRIVATE_KEY"
 
+  echo "🛠️ Створення systemd-сервісу..."
   sudo tee /etc/systemd/system/${NODE_SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
 Description=Drosera Node Service
@@ -125,42 +124,43 @@ ExecStart=$(which drosera-operator) node --db-file-path $HOME/.drosera.db --netw
 WantedBy=multi-user.target
 EOF
 
+  echo "🔐 Налаштування firewall..."
   sudo ufw allow ssh
   sudo ufw allow 22
   sudo ufw allow 31313/tcp
   sudo ufw allow 31314/tcp
   sudo ufw --force enable
 
+  echo "🚀 Запуск ноди..."
   sudo systemctl daemon-reload
   sudo systemctl enable ${NODE_SERVICE_NAME}
   sudo systemctl start ${NODE_SERVICE_NAME}
 
-  echo "Встановлення завершено!"
-  echo "Логи ноди дивіться через:"
-  echo "journalctl -u ${NODE_SERVICE_NAME} -f"
+  echo "✅ Встановлення завершено!"
+  echo "📄 Перевірити логи: journalctl -u ${NODE_SERVICE_NAME} -f"
 }
 
 function remove_node() {
-  echo "Зупинка і видалення ноди..."
+  echo "⛔ Зупинка і видалення ноди..."
   sudo systemctl stop ${NODE_SERVICE_NAME} || true
   sudo systemctl disable ${NODE_SERVICE_NAME} || true
   sudo rm /etc/systemd/system/${NODE_SERVICE_NAME}.service || true
   sudo systemctl daemon-reload
 
-  echo "Видалення drosera-operator..."
+  echo "🧹 Видалення drosera-operator..."
   sudo rm /usr/bin/drosera-operator || true
 
-  echo "Видалення робочих файлів..."
+  echo "🧹 Видалення робочих файлів..."
   rm -rf ~/my-drosera-trap
   rm -f drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
 
-  echo "Видалення завершено."
+  echo "✅ Видалення завершено."
 }
 
 function restart_node() {
-  echo "Перезапуск ноди..."
+  echo "🔁 Перезапуск ноди..."
   sudo systemctl restart ${NODE_SERVICE_NAME}
-  echo "Нода перезапущена."
+  echo "✅ Нода перезапущена."
 }
 
 function main_menu() {
@@ -177,8 +177,8 @@ function main_menu() {
       1) install_node ;;
       2) remove_node ;;
       3) restart_node ;;
-      4) echo "Вихід."; exit 0 ;;
-      *) echo "Невірний вибір, спробуйте ще раз." ;;
+      4) echo "👋 Вихід."; exit 0 ;;
+      *) echo "❌ Невірний вибір, спробуйте ще раз." ;;
     esac
   done
 }
