@@ -4,6 +4,20 @@ set -e
 SERVICE="drosera.service"
 SERVICE_PATH="/etc/systemd/system/$SERVICE"
 
+function prompt_nonempty() {
+  local prompt_msg=$1
+  local input_var
+  while true; do
+    read -rp "$prompt_msg: " input_var
+    if [[ -n "$input_var" ]]; then
+      echo "$input_var"
+      break
+    else
+      echo "Значення не може бути порожнім, спробуйте ще раз."
+    fi
+  done
+}
+
 function remove_node() {
   echo "=== Починаємо видалення існуючої ноди Drosera ==="
 
@@ -32,6 +46,12 @@ function remove_node() {
 
 function install_node() {
   echo "=== Починаємо установку Drosera ==="
+
+  # Запитуємо дані у користувача
+  local git_email=$(prompt_nonempty "Введіть email для git (наприклад, you@example.com)")
+  local git_user=$(prompt_nonempty "Введіть ім'я користувача для git (github-username)")
+  local drosera_address=$(prompt_nonempty "Введіть вашу Drosera адресу (наприклад, 0xYourDroseraAddress)")
+  local rpc_url=$(prompt_nonempty "Введіть RPC URL (наприклад, https://rpc.holesky.testnet)")
 
   # Оновлення системи (опційно)
   sudo apt update && sudo apt upgrade -y
@@ -87,17 +107,17 @@ function install_node() {
   mkdir -p ~/my-drosera-trap
   cd ~/my-drosera-trap
 
-  # Налаштування git (заміни на свої дані, якщо треба)
-  git config --global user.email "you@example.com"
-  git config --global user.name "your-github-username"
+  # Налаштування git з введеними даними
+  git config --global user.email "$git_email"
+  git config --global user.name "$git_user"
 
   forge init -t drosera-network/trap-foundry-template || true
 
   bun install || true
   forge build || true
 
-  echo "Реєстрація оператора (заміни значення --drosera-address, --rpc-url на свої)..."
-  drosera-operator register --drosera-address "0xYourDroseraAddress" --rpc-url "https://rpc.holesky.testnet" || \
+  echo "Реєстрація оператора..."
+  drosera-operator register --drosera-address "$drosera_address" --rpc-url "$rpc_url" || \
     echo "Реєстрація не пройшла, перевірте адреси та RPC."
 
   # Налаштування firewall (опційно)
