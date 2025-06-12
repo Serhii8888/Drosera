@@ -103,6 +103,9 @@ forge init -t drosera-network/trap-foundry-template
 bun install
 forge build
 
+echo 'export PATH=/root/.drosera/bin:$PATH' >> /root/.bashrc
+source /root/.bashrc
+
 # Фінальні інструкції
 echo ""
 echo "✅ Установка завершена!"
