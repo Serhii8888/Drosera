@@ -115,5 +115,6 @@ echo "DROSERA_PRIVATE_KEY=$DROSERA_PRIVATE_KEY drosera apply"
 echo ""
 echo "👉 Коли попросять підтвердження — введіть: ofc"
 echo "⚠️ Увага! Щоб команди drosera, forge та bun працювали після перезавантаження — перезапустіть сесію або виконайте:"
+echo "echo 'export PATH=/root/.drosera/bin:$PATH' >> /root/.bashrc"
 echo "source ~/.bashrc"
 
