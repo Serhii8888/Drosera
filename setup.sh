@@ -103,8 +103,6 @@ forge init -t drosera-network/trap-foundry-template
 bun install
 forge build
 
-echo 'export PATH=/root/.drosera/bin:$PATH' >> /root/.bashrc
-source /root/.bashrc
 
 # Фінальні інструкції
 echo ""
@@ -116,3 +114,6 @@ echo ""
 echo "DROSERA_PRIVATE_KEY=$DROSERA_PRIVATE_KEY drosera apply"
 echo ""
 echo "👉 Коли попросять підтвердження — введіть: ofc"
+echo "⚠️ Увага! Щоб команди drosera, forge та bun працювали після перезавантаження — перезапустіть сесію або виконайте:"
+echo "source ~/.bashrc"
+
