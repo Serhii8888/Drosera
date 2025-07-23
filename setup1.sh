@@ -1,83 +1,83 @@
 #!/bin/bash
 
-# === 0. Запит даних ===
+# ==== 0. Запит даних ====
 read -p "🔐 Введіть приватний ключ Оператора (PRIVATE_KEY): " PRIVATE_KEY
 read -p "🌐 Введіть публічну IP-адресу вашого VPS (VPS_IP): " VPS_IP
 
-# === 1. Установка CLI Оператора ===
-cd ~ || exit
+# ==== 1. Встановлення залежностей ====
+echo "⚙️ Встановлюємо необхідні пакети..."
+sudo apt-get update
+sudo apt-get install -y curl clang libssl-dev tar ufw
 
-echo "⬇️ Завантаження drosera-operator..."
-curl -LO https://github.com/drosera-network/releases/releases/download/v1.16.2/drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
+# ==== 2. Встановлення droseraup та drosera-operator CLI ====
+echo "⬇️ Встановлення droseraup та drosera-operator CLI..."
+curl -L https://app.drosera.io/install | bash
 
-echo "📦 Розпакування архіву..."
-tar -xvf drosera-operator-v1.16.2-x86_64-unknown-linux-gnu.tar.gz
+# Оновлюємо PATH
+source "$HOME/.bashrc"
 
-echo "📤 Копіюємо drosera-operator у /usr/bin..."
-sudo cp drosera-operator /usr/bin
+# Встановлення останньої версії drosera-operator (наприклад, v1.20.0)
+VERSION="v1.20.0"
+mkdir -p "$HOME/.drosera/bin"
+curl -LO "https://github.com/drosera-network/releases/releases/download/${VERSION}/drosera-operator-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+tar -xvf "drosera-operator-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+mv drosera-operator "$HOME/.drosera/bin/"
+chmod +x "$HOME/.drosera/bin/drosera-operator"
 
-echo "🧪 Перевірка версії drosera-operator:"
-drosera-operator --version
+# ==== 3. Реєстрація оператора ====
+echo "📝 Реєстрація оператора..."
+"$HOME/.drosera/bin/drosera-operator" register --eth-rpc-url https://ethereum-hoodi-rpc.publicnode.com --eth-private-key "$PRIVATE_KEY"
 
-# === 2. (Опційно) Завантаження Docker образу для резервного запуску ===
-echo "🐳 Завантаження Docker образу drosera-operator..."
-docker pull ghcr.io/drosera-network/drosera-operator:latest
+# ==== 4. Створення каталогу для бази даних ====
+echo "📁 Створення каталогу для бази даних..."
+sudo mkdir -p /var/lib/drosera-data
+sudo chown -R root:root /var/lib/drosera-data
+sudo chmod -R 700 /var/lib/drosera-data
 
-# === 3. Реєстрація Оператора ===
-echo "📝 Реєстрація Оператора у мережі Hoobi..."
-while true; do
-    drosera-operator register \
-      --eth-rpc-url https://ethereum-hoodi-rpc.publicnode.com \
-      --eth-private-key "$PRIVATE_KEY" \
-      --drosera-address 0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D
+# ==== 5. Створення systemd сервісу ====
+echo "⚙️ Створення systemd сервісу..."
 
-    echo ""
-    read -p "✅ Продовжити запуск ноди? (y/n): " CONTINUE
-    if [[ "$CONTINUE" =~ ^[Yy]$ ]]; then
-        break
-    fi
-    echo "🔁 Повторна спроба реєстрації..."
-done
-
-# === 4. Створення systemd сервісу ===
-echo "⚙️ Створення systemd сервісу для автозапуску Drosera..."
-sudo tee /etc/systemd/system/drosera.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/drosera-operator.service > /dev/null <<EOF
 [Unit]
-Description=Drosera Operator Node
-After=network-online.target
+Description=Service for Drosera Operator
+Requires=network.target
+After=network.target
 
 [Service]
-User=$USER
+Type=simple
 Restart=always
-RestartSec=15
-LimitNOFILE=65535
-Environment="DRO__ETH__PRIVATE_KEY=$PRIVATE_KEY"
-ExecStart=$(which drosera-operator) node \
-    --eth-rpc-url https://ethereum-hoodi-rpc.publicnode.com \
-    --eth-backup-rpc-url https://relay.hoodi.drosera.io \
-    --drosera-address 0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D \
-    --listen-address 0.0.0.0 \
-    --network-external-p2p-address $VPS_IP \
-    --network-p2p-port 31313 \
-    --server-port 31314 \
-    --db-file-path $HOME/.drosera.db
+
+Environment="DRO__DB_FILE_PATH=/var/lib/drosera-data/drosera.db"
+Environment="DRO__DROSERA_ADDRESS=0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
+Environment="DRO__LISTEN_ADDRESS=0.0.0.0"
+Environment="DRO__ETH__CHAIN_ID=56048"
+Environment="DRO__ETH__RPC_URL=https://ethereum-hoodi-rpc.publicnode.com"
+Environment="DRO__ETH__BACKUP_RPC_URL=https://1rpc.io/hoodi"
+Environment="DRO__ETH__PRIVATE_KEY=${PRIVATE_KEY}"
+Environment="DRO__NETWORK__P2P_PORT=31313"
+Environment="DRO__NETWORK__EXTERNAL_P2P_ADDRESS=${VPS_IP}"
+Environment="DRO__SERVER__PORT=31314"
+
+ExecStart=$HOME/.drosera/bin/drosera-operator node
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-# === 5. Відкриття портів ===
-echo "🔓 Відкриття портів у фаєрволі..."
-sudo ufw allow 22/tcp
+# ==== 6. Налаштування фаєрволу ====
+echo "🔓 Налаштування UFW (фаєрвол)..."
+sudo ufw allow ssh
+sudo ufw allow 22
 sudo ufw allow 31313/tcp
 sudo ufw allow 31314/tcp
-sudo ufw --force enable
+echo "y" | sudo ufw enable
 
-# === 6. Запуск сервісу Drosera ===
-echo "🚀 Запуск Drosera Operator через systemd..."
+# ==== 7. Запуск сервісу ====
+echo "🚀 Запуск drosera-operator через systemd..."
 sudo systemctl daemon-reload
-sudo systemctl enable drosera
-sudo systemctl start drosera
+sudo systemctl enable drosera-operator.service
+sudo systemctl start drosera-operator.service
 
-echo "✅ Установка та запуск Drosera Operator завершені!"
-echo "📊 Перевірити статус можна командою: sudo systemctl status drosera"
+echo "✅ Установка та запуск завершені!"
+echo "Перевірте статус сервісу командою: sudo systemctl status drosera-operator.service"
+echo "Для перегляду логів використовуйте: sudo journalctl -u drosera-operator.service -f"
