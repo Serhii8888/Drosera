@@ -111,9 +111,7 @@ DROSERA_PRIVATE_KEY=$DROSERA_PRIVATE_KEY drosera apply
 
 ⚠️ Увага! Щоб команди drosera, forge та bun працювали після перезавантаження — перезапустіть сесію або виконайте:
 
-echo 'export PATH=$HOME/.drosera/bin:\$PATH' >> ~/.bashrc
-echo 'export PATH=$HOME/.foundry/bin:\$PATH' >> ~/.bashrc
-echo 'export PATH=$HOME/.bun/bin:\$PATH' >> ~/.bashrc
-source ~/.bashrc
+echo 'export PATH=/root/.drosera/bin:$PATH' >> /root/.bashrc
+source /root/.bashrc
 
 EOF
