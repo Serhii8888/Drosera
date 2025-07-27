@@ -98,7 +98,7 @@ bun install
 forge build
 
 # Фінальні інструкції
-cat <<EOF
+cat <<'EOF'
 
 ✅ Установка завершена!
 ℹ️ Тепер потрібно поповнити гаманець Holesky ETH через faucet.
@@ -115,3 +115,4 @@ echo 'export PATH=/root/.drosera/bin:$PATH' >> /root/.bashrc
 source /root/.bashrc
 
 EOF
+
