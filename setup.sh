@@ -1,10 +1,16 @@
 #!/bin/bash
 set -e
 
-# === Користувацькі дані ===
-read -p "Введіть свій GitHub email: " GITHUB_EMAIL
-read -p "Введіть свій GitHub username: " GITHUB_USERNAME
-read -p "Введіть приватний ключ (PRIVATE_KEY) для drosera: " DROSERA_PRIVATE_KEY
+# === Функція для перевірки команд ===
+check_command() {
+    command -v "$1" >/dev/null 2>&1 || { echo "❌ $1 не знайдений. Перевірте інсталяцію."; exit 1; }
+}
+
+# === Введення користувацьких даних ===
+read -rp "Введіть свій GitHub email: " GITHUB_EMAIL
+read -rp "Введіть свій GitHub username: " GITHUB_USERNAME
+read -s -rp "Введіть приватний ключ (PRIVATE_KEY) для drosera: " DROSERA_PRIVATE_KEY
+echo
 
 # === Оновлення системи ===
 sudo apt-get update && sudo apt-get upgrade -y
@@ -29,67 +35,75 @@ sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo docker run hello-world || true
 
-# === Drosera CLI (droseraup) ===
+# === Drosera CLI ===
 curl -sSfL https://raw.githubusercontent.com/drosera-network/releases/main/droseraup/install | bash
 echo 'export PATH=$HOME/.drosera/bin:$PATH' >> ~/.bashrc
 export PATH=$HOME/.drosera/bin:$PATH
-command -v droseraup >/dev/null || { echo "❌ droseraup не знайдений"; exit 1; }
+check_command droseraup
 
 # === Foundry ===
 curl -L https://foundry.paradigm.xyz | bash
 echo 'export PATH=$HOME/.foundry/bin:$PATH' >> ~/.bashrc
 export PATH=$HOME/.foundry/bin:$PATH
 foundryup
-command -v forge >/dev/null || { echo "❌ forge не знайдений"; exit 1; }
+check_command forge
 
 # === Bun ===
 curl -fsSL https://bun.sh/install | bash
 echo 'export PATH=$HOME/.bun/bin:$PATH' >> ~/.bashrc
 export PATH=$HOME/.bun/bin:$PATH
-command -v bun >/dev/null || { echo "❌ bun не знайдений"; exit 1; }
+check_command bun
 
-# === Створення проекту Trap ===
-TRAP_DIR=my-drosera-trap
-if [ -d "$TRAP_DIR" ]; then
-    echo "⚠️ Каталог '$TRAP_DIR' вже існує. Пропускаємо створення."
-else
-    forge init -t drosera-network/trap-foundry-template "$TRAP_DIR"
-fi
+# === Функція для створення та деплою трапу ===
+deploy_trap() {
+    TRAP_DIR="$HOME/my-drosera-trap"
+    mkdir -p "$TRAP_DIR" && cd "$TRAP_DIR"
 
-cd "$TRAP_DIR"
-git config --global user.email "$GITHUB_EMAIL"
-git config --global user.name "$GITHUB_USERNAME"
+    git config --global user.email "$GITHUB_EMAIL"
+    git config --global user.name "$GITHUB_USERNAME"
 
-# === Встановлення залежностей ===
-bun install
+    # Ініціалізація проекту якщо немає foundry.toml
+    if [ ! -f "foundry.toml" ]; then
+        forge init -t drosera-network/trap-foundry-template
+    fi
 
-# Ставимо правильний пакет контрактів
-bun add github:drosera-network/contracts
+    # Встановлення залежностей
+    bun install
+    bun add github:drosera-network/contracts
 
-# === Автоматичне виправлення імпортів у src/ і test/ ===
-find src test -type f -name "*.sol" -print0 | while IFS= read -r -d '' file; do
-  # Іменовані імпорти замість plain-import forge-std
-  sed -i 's|import "forge-std/\(.*\).sol"|import {\1} from "forge-std/\1.sol"|g' "$file"
-  # Замінюємо старі drosera-contracts на @drosera/contracts/src/
-  sed -i 's|drosera-contracts/|@drosera/contracts/src/|g' "$file"
-done
+    # Автоматичне виправлення імпортів у src/ і test/
+    find src test -type f -name "*.sol" -print0 | while IFS= read -r -d '' file; do
+      sed -i 's|import "forge-std/\(.*\).sol"|import {\1} from "forge-std/\1.sol"|g' "$file"
+      sed -i 's|drosera-contracts/|@drosera/contracts/src/|g' "$file"
+    done
 
-# === Компіляція ===
-forge build
+    forge build
+
+    read -rp "Enter your EVM wallet address (for whitelist): " OPERATOR_ADDR
+
+    cat > drosera.toml <<EOL
+[traps.mytrap]
+path = "out/HelloWorldTrap.sol/HelloWorldTrap.json"
+response_contract = "0x183D78491555cb69B68d2354F7373cc2632508C7"
+response_function = "helloworld(string)"
+cooldown_period_blocks = 33
+min_number_of_operators = 1
+max_number_of_operators = 2
+block_sample_size = 10
+private_trap = true
+whitelist = ["$OPERATOR_ADDR"]
+EOL
+
+    export DROSERA_PRIVATE_KEY
+    drosera apply
+    echo "✅ Trap deployed!"
+}
+
+# === Виклик деплою трапу ===
+deploy_trap
 
 # === Фінальні інструкції ===
-cat <<EOF
-
-✅ Установка завершена!
-ℹ️ Поповніть гаманець Hoodi ETH через faucet.
-
-Після поповнення запустіть:
-
-DROSERA_PRIVATE_KEY=$DROSERA_PRIVATE_KEY drosera apply
-
-👉 Підтвердження введіть: ofc
-
-⚠️ Після перезавантаження виконайте:
-source ~/.bashrc
-
-EOF
+echo
+echo "⚠️ Після перезавантаження виконайте:"
+echo "source ~/.bashrc"
+echo
