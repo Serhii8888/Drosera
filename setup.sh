@@ -78,8 +78,8 @@ bun install
 
 # === Forge deps ===
 step "Встановлення forge-std та drosera contracts"
-forge install foundry-rs/forge-std -f
-forge install drosera-network/contracts -f
+forge install foundry-rs/forge-std
+forge install drosera-network/contracts
 
 # Remappings
 cat > remappings.txt <<EOL
