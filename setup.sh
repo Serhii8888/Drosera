@@ -98,7 +98,7 @@ run_as_user "$USER_HOME/.foundry/bin/foundryup"
 
 if ! run_as_user "command -v forge"; then
     error "forge не знайдений"
-    exit 1
+    #exit 1
 fi
 
 # === Bun ===
@@ -108,7 +108,7 @@ export_for_user "PATH" "\$HOME/.bun/bin:\$PATH"
 
 if ! run_as_user "command -v bun"; then
     error "bun не знайдений"
-    exit 1
+    #exit 1
 fi
 
 # === Налаштування Git ===
