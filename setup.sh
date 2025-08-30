@@ -1,8 +1,7 @@
 #!/bin/bash
-
 set -e
 
-# === Збір даних користувача ===
+# === Налаштування користувача ===
 read -p "Введіть свій GitHub email: " GITHUB_EMAIL
 read -p "Введіть свій GitHub username: " GITHUB_USERNAME
 read -p "Введіть приватний ключ (PRIVATE_KEY) для drosera: " DROSERA_PRIVATE_KEY
@@ -11,90 +10,68 @@ read -p "Введіть приватний ключ (PRIVATE_KEY) для drosera
 sudo apt-get update && sudo apt-get upgrade -y
 
 # === Базові пакети ===
-sudo apt install -y curl ufw iptables build-essential git wget lz4 jq make gcc nano automake autoconf tmux htop nvme-cli \
-libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip
+sudo apt install -y curl ufw iptables build-essential git wget lz4 jq make gcc nano automake autoconf tmux htop \
+  nvme-cli libgbm1 pkg-config libssl-dev libleveldb-dev tar clang bsdmainutils ncdu unzip
 
-# === Docker (чисте встановлення) ===
+# === Docker ===
 for pkg in docker.io docker-doc docker-compose podman-docker containerd runc; do
     sudo apt-get remove -y "$pkg" || true
 done
-
 sudo apt-get install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo docker run hello-world || true
 
-# Перевірка Docker
-sudo docker run --rm hello-world
-
-# === DroseraUP (інсталятор drosera) ===
+# === droseraup ===
 curl -sSfL https://raw.githubusercontent.com/drosera-network/releases/main/droseraup/install | bash
+echo 'export PATH=$HOME/.drosera/bin:$PATH' >> ~/.bashrc
+export PATH=$HOME/.drosera/bin:$PATH
+command -v droseraup >/dev/null || { echo "❌ droseraup не знайдений"; exit 1; }
 
-DROSERA_BIN="$HOME/.drosera/bin"
-if ! echo "$PATH" | grep -q "$DROSERA_BIN"; then
-  echo "export PATH=\"$DROSERA_BIN:\$PATH\"" >> "$HOME/.bashrc"
-  export PATH="$DROSERA_BIN:$PATH"
-fi
-
-if ! command -v droseraup &>/dev/null; then
-  echo "❌ droseraup не знайдений. Перевірте встановлення вручну."
-  exit 1
-fi
-
-# === Foundry (forge, cast, anvil) ===
+# === Foundry ===
 curl -L https://foundry.paradigm.xyz | bash
-
-if ! echo "$PATH" | grep -q "$HOME/.foundry/bin"; then
-  echo "export PATH=\"$HOME/.foundry/bin:\$PATH\"" >> "$HOME/.bashrc"
-  export PATH="$HOME/.foundry/bin:$PATH"
-fi
-
-source ~/.bashrc
+echo 'export PATH=$HOME/.foundry/bin:$PATH' >> ~/.bashrc
+export PATH=$HOME/.foundry/bin:$PATH
 foundryup
+command -v forge >/dev/null || { echo "❌ forge не знайдений"; exit 1; }
 
-if ! command -v forge &>/dev/null; then
-  echo "❌ forge не знайдений. Перевірте встановлення Foundry вручну."
-  exit 1
-fi
-
-# === Bun (JS пакетний менеджер) ===
+# === Bun ===
 curl -fsSL https://bun.sh/install | bash
+echo 'export PATH=$HOME/.bun/bin:$PATH' >> ~/.bashrc
+export PATH=$HOME/.bun/bin:$PATH
+command -v bun >/dev/null || { echo "❌ bun не знайдений"; exit 1; }
 
-if ! echo "$PATH" | grep -q "$HOME/.bun/bin"; then
-  echo "export PATH=\"$HOME/.bun/bin:\$PATH\"" >> "$HOME/.bashrc"
-  export PATH="$HOME/.bun/bin:$PATH"
-fi
-
-source ~/.bashrc
-
-if ! command -v bun &>/dev/null; then
-  echo "❌ bun не знайдений. Перевірте встановлення вручну."
-  exit 1
-fi
-
-# === Ініціалізація Trap проекту ===
+# === Ініціалізація Trap ===
 TRAP_DIR=my-drosera-trap
 if [ -d "$TRAP_DIR" ]; then
   echo "⚠️ Каталог '$TRAP_DIR' вже існує. Пропускаємо створення."
 else
-  git clone https://github.com/drosera-network/trap-foundry-template "$TRAP_DIR"
+  mkdir "$TRAP_DIR"
 fi
-
 cd "$TRAP_DIR"
-git config user.email "$GITHUB_EMAIL"
-git config user.name "$GITHUB_USERNAME"
+
+git config --global user.email "$GITHUB_EMAIL"
+git config --global user.name "$GITHUB_USERNAME"
+
+# === Ініціалізація проекту ===
+forge init -t drosera-network/trap-foundry-template
 
 # === Встановлення залежностей ===
 bun install
-bun add github:drosera-network/drosera-contracts
+bun add github:drosera-network/contracts
+
+# === Перевірка структури контрактів ===
+if [ ! -f "node_modules/@drosera/contracts/src/Trap.sol" ]; then
+  echo "❌ Trap.sol не знайдено у @drosera/contracts"
+  exit 1
+fi
 
 # === Компіляція ===
 forge build
@@ -103,17 +80,15 @@ forge build
 cat <<EOF
 
 ✅ Установка завершена!
-
 ℹ️ Тепер потрібно поповнити гаманець Holesky ETH через faucet.
 
-Після поповнення запустіть наступну команду для застосування конфігурації:
+Після поповнення запустіть команду:
 
 DROSERA_PRIVATE_KEY=$DROSERA_PRIVATE_KEY drosera apply
 
 👉 Коли попросять підтвердження — введіть: ofc
 
-⚠️ Увага! Щоб команди drosera, forge та bun працювали після перезавантаження — виконайте:
-
-source ~/.bashrc
+⚠️ Після перезавантаження сервера не забудьте виконати:
+  source ~/.bashrc
 
 EOF
