@@ -95,7 +95,7 @@ whitelist = ["$OPERATOR_ADDR"]
 EOL
 
     export DROSERA_PRIVATE_KEY
-    drosera apply
+    "$HOME/.drosera/bin/drosera" apply
     echo "✅ Trap deployed!"
 }
 
