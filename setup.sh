@@ -11,6 +11,10 @@ read -rp "Введіть ваш GitHub username: " GITHUB_USERNAME
 read -rp "Введіть вашу EVM адресу (для whitelist): " OPERATOR_ADDR
 read -srp "Введіть приватний ключ (EVM PRIVATE KEY): " DROSERA_PRIVATE_KEY; echo
 
+# RPC з дефолтним значенням
+read -rp "Введіть Ethereum RPC [https://ethereum-hoodi-rpc.publicnode.com]: " ETHEREUM_RPC
+ETHEREUM_RPC=${ETHEREUM_RPC:-"https://ethereum-hoodi-rpc.publicnode.com"}
+
 # === Оновлення системи ===
 step "Оновлення системи"
 apt-get update && apt-get upgrade -y
@@ -95,10 +99,8 @@ forge build
 # === Створення drosera.toml ===
 step "Формування drosera.toml"
 
-read -rp "Введіть вашу EVM адресу (для whitelist): " OPERATOR_ADDR
-
 cat > drosera.toml <<EOL
-ethereum_rpc = "https://ethereum-hoodi-rpc.publicnode.com"
+ethereum_rpc = "$ETHEREUM_RPC"
 drosera_rpc = "https://relay.hoodi.drosera.io"
 eth_chain_id = 560048
 drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
@@ -116,7 +118,6 @@ block_sample_size = 10
 private_trap = true
 whitelist = ["$OPERATOR_ADDR"]
 EOL
-
 
 # === Deploy Trap ===
 step "Деплой Trap"
